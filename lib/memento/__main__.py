@@ -117,16 +117,16 @@ def createParser():
         help = 'Erase value')
 
     group.add_argument(
-        '--update', action = 'store_true',
-        help = 'Force memento to be updated')
-
-    argparser.add_argument(
         '--replace', action = 'store', default = '{}',
         help = 'Rewrite replacement word with memento')
 
-    argparser.add_argument(
+    group.add_argument(
         '--typed', action = 'store_true',
         help = 'Type memento rather than replacing word')
+
+    argparser.add_argument(
+        '--update', action = 'store_true',
+        help = 'Force memento to be updated')
 
     argparser.add_argument(
         '--keepalive', type = int, default = 60,
