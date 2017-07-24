@@ -1,0 +1,6 @@
+[MESSAGES CONTROL]
+disable=bad-whitespace,missing-docstring,invalid-name,locally-disabled,
+  too-many-instance-attributes,too-many-arguments,
+  too-many-locals,too-many-branches,protected-access,
+  old-style-class,too-few-public-methods,star-args,
+  too-many-return-statements,abstract-class-little-used
