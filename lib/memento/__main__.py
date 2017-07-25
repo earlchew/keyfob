@@ -10,8 +10,10 @@ import resource
 import errno
 import time
 import fcntl
+import threading
 
 from . import store as _store
+from . import pipeline as _pipeline
 
 arg0 = os.path.basename(os.path.dirname(sys.argv[0]))
 
@@ -22,8 +24,26 @@ def die(msg):
 
 
 def writeMemento(outfile, memento):
-    outfile.write(memento)
+    outfile.write(memento + '\n')
     outfile.flush()
+
+
+def pipeMemento(inpfile, outfile, memento):
+    pipeline = _pipeline.Pipeline(inpfile, outfile)
+    writeMemento(pipeline, memento)
+    pipelineThread = threading.Thread(
+        target=lambda: runPipeline(pipeline))
+    pipelineThread.daemon = True
+    pipelineThread.start()
+
+
+def runPipeline(pipeline):
+    try:
+        while pipeline.splice(8192) != 0:
+            pass
+    except OSError as exc:
+        if exc.errno != errno.EPIPE:
+            die('Unable to transfer data - {}'.format(exc))
 
 
 def echoEnabled(inpfile):
@@ -35,9 +55,7 @@ def echoEnabled(inpfile):
 
 
 def typeMemento(inpfile, memento):
-    if not memento or memento[-1] != '\n':
-        memento += '\n'
-    for ch in memento:
+    for ch in memento + '\n':
         delay = 0.1
         while True:
             if echoEnabled(inpfile):
@@ -49,7 +67,10 @@ def typeMemento(inpfile, memento):
 
 
 def readMemento():
-    dupfd = os.dup(sys.stdin.fileno()) # The sys.stdin file is read-only
+    if os.isatty(sys.stdin.fileno()):
+        dupfd = os.dup(sys.stdin.fileno()) # The sys.stdin file is read-only
+    else:
+        dupfd = os.open('/dev/tty', os.O_RDWR)
     try:
         with os.fdopen(dupfd, 'r+') as dupfile:
             dupfd = None
@@ -76,7 +97,11 @@ def spawnChild(rdfile, wrfile, args):
     childpid = os.fork()
     if not childpid:
 
+        if args.pipe:
+            os.dup2(rdfile.fileno(), sys.stdin.fileno())
+            rdfile.close()
         wrfile.close()
+
         os.execvp(args.command[0], cmd)
         os._exit(1)
 
@@ -113,24 +138,28 @@ def createParser():
 
     group = argparser.add_mutually_exclusive_group()
     group.add_argument(
-        '--erase', action = 'store_true',
-        help = 'Erase value')
+        '--revoke', action = 'store_true',
+        help = 'Revoke stored memento')
 
     group.add_argument(
         '--replace', action = 'store', default = '{}',
-        help = 'Rewrite replacement word with memento')
+        help = 'Rewrite single occurence of replacement text with memento')
 
     group.add_argument(
         '--typed', action = 'store_true',
         help = 'Type memento rather than replacing word')
+
+    group.add_argument(
+        '--pipe', action = 'store_true',
+        help = 'Write memento to stdout pipe')
 
     argparser.add_argument(
         '--update', action = 'store_true',
         help = 'Force memento to be updated')
 
     argparser.add_argument(
-        '--keepalive', type = int, default = 60,
-        help = 'Duration in minutes to retain memorised'
+        '--retain', type = int, default = 60,
+        help = 'Duration in minutes to retain memento'
         ' value after last use. Use zero or less to retain indefinitely.')
 
     argparser.add_argument(
@@ -178,19 +207,22 @@ def run(memento, args):
 
                     closeFds(keepfds)
 
-                    if args.typed:
-                        typeMemento(sys.stdin, memento)
+                    if args.pipe:
+                        pipeMemento(sys.stdin, sys.stdout, memento)
                     else:
-                        writeMemento(sys.stdout, memento)
+                        if args.typed:
+                            typeMemento(sys.stdin, memento)
+                        else:
+                            writeMemento(sys.stdout, memento)
 
-                    # Release stdin and stdout to avoid holding
-                    # any files in common with the child process.
-                    #
-                    # Only stderr remains shared with the child
-                    # process.
+                        # Release stdin and stdout to avoid holding
+                        # any files in common with the child process.
+                        #
+                        # Only stderr remains shared with the child
+                        # process.
 
-                    os.dup2(nullfile.fileno(), sys.stdout.fileno())
-                    os.dup2(nullfile.fileno(), sys.stdin.fileno())
+                        os.dup2(nullfile.fileno(), sys.stdout.fileno())
+                        os.dup2(nullfile.fileno(), sys.stdin.fileno())
 
                 exitcode = waitChild(childpid)
     finally:
@@ -206,22 +238,28 @@ def main(argv):
 
     args = createParser().parse_args(argv[1:])
 
-    if args.typed:
+    if args.revoke:
+        if any((args.update, args.typed, args.pipe)):
+            die('Revocation conflicts with other options')
+    elif args.typed:
         if not os.isatty(sys.stdin.fileno()):
             die('Typed input requires stding to be a tty')
-    elif not args.replace:
-        die('Replacement word must not be empty')
-    elif sum((1 if word == args.replace else 0 for word in args.command)) != 1:
-        die('Exactly one {} expected'.format(args.replace))
+    elif not args.pipe:
+        if not args.replace:
+            die('Replacement word must not be empty')
+        elif sum((
+                1 if word == args.replace else 0
+                for word in args.command)) != 1:
+            die('Exactly one {} expected'.format(args.replace))
 
     store = _store.Store(
         os.path.basename(os.path.dirname(__file__)),
         args.name,
-        keepalive = max(0, args.keepalive))
+        keepalive = max(0, args.retain))
 
     rc = 1
 
-    if args.erase:
+    if args.revoke:
         store.forget()
         rc = 0
     else:
