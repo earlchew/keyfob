@@ -1,6 +1,6 @@
 #!/bin/sh
 
-set -ex
+set -e
 
 [ -z "${0##/*}" ] || exec "$PWD/$0" "$@" || exit 1
 

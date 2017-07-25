@@ -11,6 +11,7 @@ import errno
 import time
 import fcntl
 import threading
+import contextlib
 
 from . import store as _store
 from . import pipeline as _pipeline
@@ -38,12 +39,13 @@ def pipeMemento(inpfile, outfile, memento):
 
 
 def runPipeline(pipeline):
-    try:
-        while pipeline.splice(8192) != 0:
-            pass
-    except OSError as exc:
-        if exc.errno != errno.EPIPE:
-            die('Unable to transfer data - {}'.format(exc))
+    with contextlib.closing(pipeline):
+        try:
+            while pipeline.splice(8192) != 0:
+                pass
+        except OSError as exc:
+            if exc.errno != errno.EPIPE:
+                die('Unable to transfer data - {}'.format(exc))
 
 
 def echoEnabled(inpfile):
@@ -82,17 +84,10 @@ def readMemento():
 
 def spawnChild(rdfile, wrfile, args):
 
-    if args.typed:
-        cmd = args.command
-    else:
-        cmd = [
-            (
-                word
-                if word != args.replace else
-                '/dev/fd/{}'.format(rdfile.fileno())
-            )
-            for word in args.command
-        ]
+    cmd = [
+        '/dev/fd/{}'.format(rdfile.fileno()) if word is None else word
+        for word in args.command
+    ]
 
     childpid = os.fork()
     if not childpid:
@@ -131,44 +126,86 @@ def closeFds(keepfds):
                 raise
 
 
+class HelpFormatter(argparse.HelpFormatter):
+
+    def _format_args(self, action, default_metavar):
+        metavar = self._metavar_formatter(action, default_metavar)(1)[0]
+        if action.nargs == argparse.ZERO_OR_MORE:
+            result = '[{} ...]'.format(metavar)
+        elif action.nargs == argparse.ONE_OR_MORE:
+            result = '{} ...'.format(metavar)
+        else:
+            result = super(HelpFormatter, self)._format_args(
+                action, default_metavar)
+        return result
+
+    def _metavar_formatter(self, action, default_metavar):
+        if (action.metavar is None
+                and action.choices is not None
+                and len(action.choices) == 1):
+            def formatter(tuple_size):
+                return (
+                    [str(choice) for choice in action.choices][0],
+                ) * tuple_size
+        else:
+            formatter = super(HelpFormatter, self)._metavar_formatter(
+                action, default_metavar)
+        return formatter
+
+
 def createParser():
 
     argparser = argparse.ArgumentParser(
-        description = 'Remember and recall memento')
-
-    group = argparser.add_mutually_exclusive_group()
-    group.add_argument(
-        '--revoke', action = 'store_true',
-        help = 'Revoke stored memento')
-
-    group.add_argument(
-        '--replace', action = 'store', default = '{}',
-        help = 'Rewrite single occurence of replacement text with memento')
-
-    group.add_argument(
-        '--typed', action = 'store_true',
-        help = 'Type memento rather than replacing word')
-
-    group.add_argument(
-        '--pipe', action = 'store_true',
-        help = 'Write memento to stdout pipe')
+        prog = os.path.basename(os.path.dirname(__file__)),
+        description = 'Remember and recall private memento.',
+        formatter_class = HelpFormatter,
+        add_help = False)
 
     argparser.add_argument(
-        '--update', action = 'store_true',
+        '-h', '-?', '--help', action = 'help', default = argparse.SUPPRESS,
+        help = 'Show this help message and exit.')
+
+    modeGroup = argparser.add_mutually_exclusive_group()
+    modeGroup.add_argument(
+        '-R', '--revoke', action = 'store_true',
+        help = 'Revoke the stored memento.')
+
+    ioGroup = modeGroup.add_mutually_exclusive_group()
+    ioGroup.add_argument(
+        '-f', '--file', action = 'store', default = '{}',
+        help = 'Use a file. The name of the file will be inserted'
+        ' in place of the argument matching the replacement text.'
+        ' The command will read the memento from the file.')
+
+    ioGroup.add_argument(
+        '-t', '--tty', action = 'store_true',
+        help = 'Use /dev/tty. The command will read the memento from'
+        ' the controlling terminal.')
+
+    ioGroup.add_argument(
+        '-p', '--pipe', default = None, const = True, nargs = '?',
+        type = int, choices = [ 1 ],
+        help = 'Use a pipe. The command will read the memento from stdin.'
+        ' Normally the pipe will remain open to allow the command to'
+        ' read the remaining data on stdin. Specify an argument of 1'
+        ' to close stdin after sending the memento.')
+
+    argparser.add_argument(
+        '-u', '--update', action = 'store_true',
         help = 'Force memento to be updated')
 
     argparser.add_argument(
-        '--retain', type = int, default = 60,
+        '-k', '--keep', type = int, default = 60,
         help = 'Duration in minutes to retain memento'
         ' value after last use. Use zero or less to retain indefinitely.')
 
     argparser.add_argument(
         'name', action = 'store',
-        help = 'Memento key name')
+        help = 'Memento key name.')
 
     argparser.add_argument(
-        'command', nargs = '+',
-        help = 'Command to run')
+        'command', nargs = '*',
+        help = 'Command to run.')
 
     return argparser
 
@@ -210,7 +247,7 @@ def run(memento, args):
                     if args.pipe:
                         pipeMemento(sys.stdin, sys.stdout, memento)
                     else:
-                        if args.typed:
+                        if args.tty:
                             typeMemento(sys.stdin, memento)
                         else:
                             writeMemento(sys.stdout, memento)
@@ -239,23 +276,34 @@ def main(argv):
     args = createParser().parse_args(argv[1:])
 
     if args.revoke:
-        if any((args.update, args.typed, args.pipe)):
+        if any((args.update, args.tty, args.pipe)):
             die('Revocation conflicts with other options')
-    elif args.typed:
-        if not os.isatty(sys.stdin.fileno()):
-            die('Typed input requires stding to be a tty')
-    elif not args.pipe:
-        if not args.replace:
-            die('Replacement word must not be empty')
-        elif sum((
-                1 if word == args.replace else 0
-                for word in args.command)) != 1:
-            die('Exactly one {} expected'.format(args.replace))
+    else:
+        if not len(args.command):
+            die('No command specified')
+        if args.tty:
+            if not os.isatty(sys.stdin.fileno()):
+                die('Typed input requires stding to be a tty')
+        elif args.pipe is not None:
+            if args.pipe is not True and args.pipe != 1:
+                die('Invalid pipe argument - {}'.format(args.pipe))
+        else:
+            if not args.file:
+                die('File replacement text must not be empty')
+            elif 1 != len(
+                    (
+                        word
+                        for word in args.command
+                        if word == args.file
+                    )):
+                die('Exactly one {} expected'.format(args.file))
+
+            args.command = [None if word == args.file else word]
 
     store = _store.Store(
         os.path.basename(os.path.dirname(__file__)),
         args.name,
-        keepalive = max(0, args.retain))
+        keepalive = max(0, args.keep))
 
     rc = 1
 

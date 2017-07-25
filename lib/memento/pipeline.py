@@ -54,6 +54,16 @@ class Pipeline(object):
         self.__inpfile = inpfile
         self.__outfile = outfile
 
+    def close(self):
+
+        # It seems that sys.stdin.close() and sys.stdout.close()
+        # do not actually close the underlying file descriptor
+        # so use os.dup2() to achieve the same effect.
+
+        with open('/dev/null', 'r+') as nullfile:
+            os.dup2(nullfile.fileno(), self.__inpfile.fileno())
+            os.dup2(nullfile.fileno(), self.__outfile.fileno())
+
     def write(self, buf):
         self.__outfile.write(buf)
 

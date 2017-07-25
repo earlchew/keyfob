@@ -22,10 +22,8 @@ class Store(object):
             raise ValueError(name)
 
         self.__keepalive = (
-            12 * 60 * 60
-            if keepalive is None else
-            keepalive * 60)
-        self.__keepalive = 120
+            12 * 60 * 60   if keepalive is None else
+            keepalive * 60 if keepalive else None)
 
         self.__owner = owner
         self.__name  = name
