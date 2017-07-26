@@ -4,6 +4,15 @@ set -ex
 
 [ -z "${0##/*}" ] || exec "$PWD/$0" "$@" || exit 1
 
+# If command line options are provided, install using those options
+# directly, otherwise install in-situ.
+
+[ $# -eq 0 ] || {
+    cd "${0%/*}"
+    exec pip install -r requirements.txt "$@"
+    exit 1
+}
+
 # Obtain the current commit of the install script, and check if it was the one
 # used to perform the last install, if any.
 
@@ -20,9 +29,7 @@ VERSION="$(readlink "${0%/*}/pkg/VERSION")" || VERSION=
 
 rm -rf "${0%/*}/pkg"
 
-set --
-set -- "$@" git+https://github.com/earlchew/python-keyutils@memento
-pip install --target "${0%/*}/pkg" "$@"
+( cd "${0%/*}" && pip install --target pkg -r requirements.txt )
 
 # Once the installation completes, stamp the directory atomically so that the
 # next run can determine that the installer completed successfully.
