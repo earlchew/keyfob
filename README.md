@@ -58,11 +58,6 @@ The current implementation will only work on Linux because of the following depe
 
 * Linux keyctl(2)
 * Linux splice(2)
-What things you need to install the software and how to install them
-
-```
-Give examples
-```
 
 ### Installing
 
