@@ -291,14 +291,17 @@ def main(argv):
             if not args.file:
                 die('File replacement text must not be empty')
             elif 1 != len(
-                    (
+                    [
                         word
                         for word in args.command
                         if word == args.file
-                    )):
+                    ]):
                 die('Exactly one {} expected'.format(args.file))
 
-            args.command = [None if word == args.file else word]
+            args.command = [
+                None if word == args.file else word
+                for word in args.command
+            ]
 
     store = _store.Store(
         os.path.basename(os.path.dirname(__file__)),
