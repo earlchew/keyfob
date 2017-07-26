@@ -271,7 +271,7 @@ def run(memento, args):
     return 1 if exitcode is None else exitcode
 
 
-def main(argv):
+def main(argv=sys.argv):
 
     args = createParser().parse_args(argv[1:])
 
