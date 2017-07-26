@@ -29,31 +29,28 @@ In these examples, the Memento application will be invoked three times:
 1. Secondly to remember the new password on th initial invocation of the openssl instance
 1. Thirdly to reinvoke a new openssl instance using the recalled password
 
-```
-$ memento  EXAMPLE -- openssl passwd -noverify -salt xx -in {}
-Memento:
-xxU4b0XBMjadY
-$ memento  EXAMPLE -- openssl passwd -noverify -salt xx -in {}
-xxU4b0XBMjadY
-```
+`$ memento --revoke EXAMPLE`
+`$ memento -- EXAMPLE openssl passwd -noverify -salt xx -in {}`  
+**`Memento: ********`**  
+`xxU4b0XBMjadY`  
+`$ memento -- EXAMPLE openssl passwd -noverify -salt xx -in {}`  
+`xxU4b0XBMjadY`
 
-```
-$ ./memento < /dev/null --pipe EXAMPLE -- openssl passwd -noverify -salt xx -stdin
-Memento:
-xxU4b0XBMjadY
-$ ./memento < /dev/null --pipe EXAMPLE -- openssl passwd -noverify -salt xx -stdin
-xxU4b0XBMjadY
-```
+`$ memento --revoke EXAMPLE`
+`$ ./memento < /dev/null --pipe -- EXAMPLE openssl passwd -noverify -salt xx -stdin`  
+**`Memento: ********`**  
+`xxU4b0XBMjadY`  
+`$ ./memento < /dev/null --pipe -- EXAMPLE openssl passwd -noverify -salt xx -stdin`  
+`xxU4b0XBMjadY`  
 
-```
-$ memento --typed EXAMPLE -- openssl passwd -noverify -salt xx
-Memento:
-Password:
-xxU4b0XBMjadY
-$ memento --typed EXAMPLE -- openssl passwd -noverify -salt xx
-Password:
-xxU4b0XBMjadY
-```
+`$ memento --revoke EXAMPLE`
+`$ memento --tty -- EXAMPLE openssl passwd -noverify -salt xx`  
+**`Memento: ********`**  
+`Password:`  
+`xxU4b0XBMjadY`  
+`$ memento --tty -- EXAMPLE openssl passwd -noverify -salt xx`  
+`Password:`  
+`xxU4b0XBMjadY`  
 
 ### Prerequisites
 
