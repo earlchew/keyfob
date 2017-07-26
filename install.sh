@@ -18,18 +18,10 @@ VERSION="$(readlink "${0%/*}/pkg/VERSION")" || VERSION=
 # To prepare for the installation, clear out the target directories so that the
 # installation can proceed cleanly.
 
-rm -rf "${0%/*}/github" "${0%/*}/pkg"
-
-( mkdir "${0%/*}/github" &&
-  cd "${0%/*}/github" &&
-  ( git clone https://github.com/earlchew/python-keyutils.git &&
-    cd python-keyutils &&
-    git checkout memento )
-)
-
+rm -rf "${0%/*}/pkg"
 
 set --
-set -- "$@" github/python-keyutils
+set -- "$@" git+https://github.com/earlchew/python-keyutils@memento
 pip install --target "${0%/*}/pkg" "$@"
 
 # Once the installation completes, stamp the directory atomically so that the
