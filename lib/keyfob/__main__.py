@@ -195,8 +195,8 @@ def createParser():
         help = 'Force memento to be updated')
 
     argparser.add_argument(
-        '-k', '--keep', type = int, default = 60,
-        help = 'Duration in minutes to retain memento'
+        '-T', '--timeout', type = int, default = 60,
+        help = 'Timeout in minutes to retain memento'
         ' value after last use. Use zero or less to retain indefinitely.')
 
     argparser.add_argument(
@@ -306,7 +306,7 @@ def main(argv=sys.argv):
     store = _store.Store(
         os.path.basename(os.path.dirname(__file__)),
         args.name,
-        keepalive = max(0, args.keep))
+        keepalive = max(0, args.timeout))
 
     rc = 1
 
