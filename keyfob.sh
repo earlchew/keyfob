@@ -6,6 +6,6 @@ set -e
 
 ! [ -h "$0" ] || exec "$(readlink -e "$0")" "$@" || exit 1
 
-set -- "${0%/*}/python.sh" -m memento "$@"
+set -- "${0%/*}/python.sh" -m keyfob "$@"
 
 exec "$@"

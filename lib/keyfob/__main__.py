@@ -157,7 +157,7 @@ def createParser():
 
     argparser = argparse.ArgumentParser(
         prog = os.path.basename(os.path.dirname(__file__)),
-        description = 'Remember and recall private memento.',
+        description = 'Securely remember and recall private memento.',
         formatter_class = HelpFormatter,
         add_help = False)
 
