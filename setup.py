@@ -13,4 +13,4 @@ setup(name='keyfob',
               'keyfob = keyfob.__main__:main',
           ]},
       package_dir={'' : 'lib'},
-      install_requires=['keyutils'])
+      install_requires=['keyutils', 'cryptography'])

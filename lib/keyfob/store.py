@@ -1,6 +1,12 @@
 from __future__ import absolute_import
 
 import keyutils
+import base64
+
+from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+from cryptography.hazmat.backends import default_backend
 
 class Store(object):
 
@@ -10,7 +16,7 @@ class Store(object):
         SESSION = keyutils.KEY_SPEC_SESSION_KEYRING
         PROCESS = keyutils.KEY_SPEC_PROCESS_KEYRING
 
-    def __init__(self, owner, name, keepalive=None):
+    def __init__(self, owner, name, salt, keepalive=None):
 
         assert isinstance(owner, basestring), type(owner)
         assert isinstance(name, basestring), type(name)
@@ -20,6 +26,16 @@ class Store(object):
 
         if not name:
             raise ValueError(name)
+
+        self.__crypt = Fernet(
+            base64.urlsafe_b64encode(
+                PBKDF2HMAC(
+                    algorithm=hashes.SHA256(),
+                    length=32,
+                    salt=('' if salt is None else salt),
+                    iterations=100000,
+                    backend=default_backend()
+                ).derive(name)))
 
         self.__keepalive = (
             12 * 60 * 60   if keepalive is None else
@@ -106,7 +122,8 @@ class Store(object):
         value = None
         if keyId is not None:
             self._touch()
-            value = self._read(keyId)
+            value = self.__crypt.decrypt(self._read(keyId))
+
         return value
 
     def memorise(self, value):
@@ -119,8 +136,9 @@ class Store(object):
         # with the key, and in any case races any pre-existing timeout.
         # To avoid these complications always use add_key().
 
+
         keyId = keyutils.add_key(
-            self.__keyName, value, self._KeyRing.PROCESS)
+            self.__keyName, self.__crypt.encrypt(value), self._KeyRing.PROCESS)
         self._keyId = keyId
 
         keyutils.set_perm(

@@ -3,6 +3,7 @@ from __future__ import absolute_import
 import ctypes
 import ctypes.util
 import errno
+import select
 import os
 
 # splice(2)
@@ -47,12 +48,24 @@ def _splice(infd, inoff, outfd, outoff, size, flags):
     return rc
 
 
+def _ioerror(errno):
+    return IOError(errno, os.strerror(errno))
+
+
 class Pipeline(object):
 
     def __init__(self, inpfile, outfile):
 
         self.__inpfile = inpfile
         self.__outfile = outfile
+
+        self.__poll = select.poll()
+        self.__poll.register(
+            self.__outfile.fileno(),
+            select.POLLHUP | select.POLLERR)
+        self.__poll.register(
+            self.__inpfile.fileno(),
+            select.POLLIN | select.POLLHUP | select.POLLERR)
 
     def close(self):
 
@@ -70,7 +83,25 @@ class Pipeline(object):
     def flush(self):
         self.__outfile.flush()
 
-    def splice(self, size, flags=0):
+    def splice(self, size):
+        while True:
+
+            # A direct call to splice(2) can block indefinitely when
+            # there is no input to read, and the output is closed. To
+            # take care of this, use poll(2) to block, and splice(2) to copy.
+
+            for fd, mask in self.__poll.poll():
+                if self.__outfile.fileno() == fd:
+                    raise _ioerror(errno.EPIPE)
+                if self.__inpfile.fileno() == fd:
+                    break
+            else:
+                continue
+
+            break
+
         return _splice(
             self.__inpfile.fileno(), None,
-            self.__outfile.fileno(), None, size, flags)
+            self.__outfile.fileno(), None,
+            size,
+            _SPLICE_F_MOVE | _SPLICE_F_NONBLOCK)
