@@ -3,7 +3,7 @@ from __future__ import absolute_import
 import keyutils
 import base64
 
-from cryptography.fernet import Fernet
+import cryptography.fernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.backends import default_backend
@@ -27,7 +27,7 @@ class Store(object):
         if not name:
             raise ValueError(name)
 
-        self.__crypt = Fernet(
+        self.__crypt = cryptography.fernet.Fernet(
             base64.urlsafe_b64encode(
                 PBKDF2HMAC(
                     algorithm=hashes.SHA256(),
@@ -67,7 +67,9 @@ class Store(object):
                 self.__keyId = keyutils.request_key(
                     self.__keyName, self._KeyRing.SESSION)
             except keyutils.Error as exc:
-                if exc.args[0] != keyutils.EKEYEXPIRED:
+                if exc.args[0] not in (
+                        keyutils.EKEYEXPIRED,
+                        keyutils.EKEYREVOKED):
                     raise
                 self.__keyId = None
 
@@ -122,7 +124,11 @@ class Store(object):
         value = None
         if keyId is not None:
             self._touch()
-            value = self.__crypt.decrypt(self._read(keyId))
+            encrypted = self._read(keyId)
+            try:
+                value = self.__crypt.decrypt(encrypted)
+            except cryptography.fernet.InvalidToken:
+                value = False
 
         return value
 
@@ -136,9 +142,9 @@ class Store(object):
         # with the key, and in any case races any pre-existing timeout.
         # To avoid these complications always use add_key().
 
-
+        encrypted = self.__crypt.encrypt(value)
         keyId = keyutils.add_key(
-            self.__keyName, self.__crypt.encrypt(value), self._KeyRing.PROCESS)
+            self.__keyName, encrypted, self._KeyRing.PROCESS)
         self._keyId = keyId
 
         keyutils.set_perm(
