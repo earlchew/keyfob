@@ -2,6 +2,8 @@ from __future__ import absolute_import
 
 import os
 import os.path
+import stat
+import math
 import re
 import sys
 import getpass
@@ -21,7 +23,10 @@ import contextlib
 from . import store as _store
 from . import pipeline as _pipeline
 
-_SALT    = '@'
+_KEYSEP  = '-'
+_KEYSALT = '.'
+_KEYPFX  = '_KEYFOB_'
+
 _FILE    = '@@'
 _TIMEOUT = 60
 _ARG0    = os.path.basename(os.path.dirname(sys.argv[0]))
@@ -30,6 +35,53 @@ _ARG0    = os.path.basename(os.path.dirname(sys.argv[0]))
 def die(msg):
     sys.stderr.write('{}: {}\n'.format(_ARG0, msg))
     os._exit(1)
+
+
+def uptime():
+    with open('/proc/uptime', 'r') as uptimefile:
+        return uptimefile.readline().split(None, 1)[0]
+
+
+def createKeySuffix():
+
+    # Use the uptime to generate a unique value, and ensure that subsequent
+    # generated values are distinct.
+
+    duration   = uptime()
+    resolution = len(duration.split('.')[-1])
+
+    time.sleep(math.pow(10, -resolution))
+    duration = int(float(duration) * math.pow(10, resolution))
+
+    suffixes = (
+        'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+        'abcdefghijklmnopqrstuvwxyz'
+        '0123456789')
+
+    suffix = []
+    while True:
+        suffix.insert(0, suffixes[duration % len(suffixes)])
+        duration /= len(suffixes)
+        if not duration:
+            break
+
+    return ''.join(suffix)
+
+
+def fdclose(fd):
+    if fd is not None:
+        os.close(fd)
+    return None
+
+
+def fdreadable(fd):
+    if not select.select([fd], [], [], 0)[0]:
+        readable = False
+    else:
+        buf = struct.pack("i", 0)
+        fcntl.ioctl(fd, termios.FIONREAD, buf)
+        readable = struct.unpack("i", buf)[0]
+    return readable
 
 
 def writeMemento(outfile, memento):
@@ -119,8 +171,7 @@ def readMemento():
             dupfd = None
             return getpass.getpass('Memento: ', dupfile)
     finally:
-        if dupfd is not None:
-            os.close(dupfd)
+        dupfd = fdclose(dupfd)
 
 
 def waitProcess(pid):
@@ -171,7 +222,7 @@ def closeFds(keepfds):
     for fd in xrange(0, numfds):
         try:
             if fd not in keepfds:
-                os.close(fd)
+                fdclose(fd)
         except OSError as exc:
             if exc.errno != errno.EBADF:
                 raise
@@ -199,7 +250,7 @@ def readKey(filename):
                         raise
                 else:
                     if (stat.st_dev, stat.st_ino) == keystat:
-                        os.close(fd)
+                        fdclose(fd)
     return key
 
 
@@ -268,6 +319,10 @@ def createParser():
         ' to close stdin after sending the memento.')
 
     argparser.add_argument(
+        '-s', '--salt',
+        help = 'File containing the salt to add to the key')
+
+    argparser.add_argument(
         '-u', '--unsalted', action = 'store_true',
         help = 'Do not require or add salt to the key')
 
@@ -277,17 +332,12 @@ def createParser():
         ' value after last use. Use zero or less to retain indefinitely.')
 
     argparser.add_argument(
-        '-k', '--key', action = 'store_true',
-        help = 'Use the key directly from the command line'
-        ' instead of reading it from a file.')
-
-    argparser.add_argument(
         '--program',
         help=argparse.SUPPRESS)
 
     argparser.add_argument(
-        'name', action = 'store',
-        help = 'File containing key, or the key itself if --key is specified.')
+        'key', action = 'store',
+        help = 'Key naming the memento')
 
     argparser.add_argument(
         'command', nargs = '*',
@@ -296,12 +346,10 @@ def createParser():
     return argparser
 
 
-def typeCommand(ttyfile, args):
-
-    assert os.isatty(ttyfile.fileno())
+def buildCommand(args, saltvar):
 
     assert not args.unsalted, args
-    assert not args.key, args
+    assert not args.salt, args
     assert not args.revoke, args
 
     argv = [_ARG0 if args.program is None else args.program]
@@ -315,8 +363,10 @@ def typeCommand(ttyfile, args):
             argv.append(args.pipe)
     if args.timeout is not None:
         argv.extend(['-T', args.timeout])
+    argv.extend(['-s', '<(${})'.format(saltvar)])
     argv.append('--')
-    argv.append('<(echo {})'.format(pipes.quote(args.name)))
+    argv.append(pipes.quote(args.key))
+
     for cmd in args.command:
         if cmd is not None:
             argv.append(pipes.quote(cmd))
@@ -324,15 +374,92 @@ def typeCommand(ttyfile, args):
             argv.append(_FILE)
         else:
             argv.append(pipes.quote(args.file))
-    cmd =  ' '.join((str(arg) for arg in argv))
+
+    def _redirect(direction, fd):
+        redirect = []
+        fdstat = os.fstat(fd)
+        if (not os.isatty(fd)
+                and not stat.S_ISFIFO(fdstat.st_mode)
+                and not stat.S_ISSOCK(fdstat.st_mode)):
+            redirect.append(
+                direction
+                + pipes.quote(os.readlink('/proc/self/fd/{}'.format(fd))))
+
+        return redirect
+
+    if os.fstat(sys.stdin.fileno()) == os.fstat(sys.stdout.fileno()):
+        redirected = _redirect('<>', sys.stdin.fileno())
+        if redirected:
+            argv.extend(redirected)
+            argv.append('>&0')
+    else:
+        argv.extend(_redirect('<', sys.stdin.fileno()))
+        argv.extend(_redirect(
+            (
+                '>>'
+                if fcntl.fcntl(
+                        sys.stdout.fileno(),
+                        fcntl.F_GETFL) & os.O_APPEND else
+                '>'
+            ),
+            sys.stdout.fileno()))
+
+    if os.fstat(sys.stdout.fileno()) == os.fstat(sys.stderr.fileno()):
+        redirected = _redirect('>', sys.stdout.fileno())
+        if redirected:
+            argv.append('2>&1')
+
+    return argv
+
+
+def typeCommand(ttyfile, args, salt):
+
+    assert os.isatty(ttyfile.fileno())
+
+    saltvar = _KEYPFX + createKeySuffix()
+    argv    = buildCommand(args, saltvar)
 
     # Flush and insert the required command into the input buffer
     # ready for use.
 
-    with ttyEcho(ttyfile, False), ttySuspendInput(ttyfile):
-        termios.tcflush(ttyfile.fileno(), termios.TCIFLUSH)
-        for ch in cmd:
-            fcntl.ioctl(ttyfile.fileno(), termios.TIOCSTI, ch)
+    rdfd, wrfd = os.pipe()
+    try:
+        childpid = os.fork()
+        if not childpid:
+            rdfd = fdclose(rdfd)
+            with os.fdopen(wrfd, 'w') as wrfile:
+                wrfd = None
+                wrfile.write('echo {}\n'.format(salt))
+            os._exit(0)
+
+        wrfd = fdclose(wrfd)
+
+        # Assume that bash HISTCONTROL=ignorespace is in effect and
+        # provide a hint that these commands should not be recorded
+        # in the command history.
+        #
+        # This is purely cosmetic, and no secret information is
+        # leaked should these commands appear in the command history.
+
+        cmd = (
+            ' unset {saltvar}'
+            ' ; read -r {saltvar} </proc/{pid}/fd/{fd}'
+            ' ; fg\n\n'.format(
+                saltvar=saltvar, pid=os.getpid(), fd=rdfd)
+            + ' '.join((str(arg) for arg in argv)))
+
+        with ttyEcho(ttyfile, False), ttySuspendInput(ttyfile):
+            termios.tcflush(ttyfile.fileno(), termios.TCIFLUSH)
+            for ch in cmd:
+                fcntl.ioctl(ttyfile.fileno(), termios.TIOCSTI, ch)
+
+        os.kill(os.getpid(), signal.SIGSTOP)
+        if fdreadable(rdfd) != 0:
+            die('Key unread')
+
+    finally:
+        rdfd = fdclose(rdfd)
+        wrfd = fdclose(wrfd)
 
 
 def sendMemento(rdfile, wrfile, args, memento):
@@ -389,10 +516,8 @@ def run(memento, args):
                 spawnFob(rdfile, wrfile, args)
                 sendMemento(rdfile, wrfile, args, memento)
     finally:
-        if rdfd is not None:
-            os.close(rdfd)
-        if wrfd is not None:
-            os.close(wrfd)
+        rdfd = fdclose(rdfd)
+        wrfd = fdclose(wrfd)
 
     return 1 if exitcode is None else exitcode
 
@@ -410,7 +535,7 @@ def _main(argv):
     args = createParser().parse_args(argv[1:])
 
     if args.revoke:
-        if any((args.update, args.tty, args.pipe)):
+        if any((args.command, args.tty, args.pipe)):
             die('Revocation conflicts with other options')
     else:
         if args.tty:
@@ -429,7 +554,8 @@ def _main(argv):
                         for word in args.command
                         if word == fileword
                     ]):
-                die('Exactly one {} expected'.format(args.file))
+                die('Exactly one occurrence of {} expected'.format(
+                    _FILE if args.file is None else args.file))
 
             args.command = [
                 None if word == fileword else word
@@ -438,29 +564,29 @@ def _main(argv):
 
     rc = None
 
-    if not args.revoke:
-        key = args.name if args.key else readKey(args.name)
+    if args.salt is not None:
+        if args.unsalted:
+            die('Salt provided for unsalted key')
 
-        if _SALT in key:
-            if args.unsalted:
-                die('Found salt {} in key'.format(_SALT))
-            key, salt = key.rsplit(_SALT, 1)
+        with open(args.salt, 'r') as saltfile:
+            salt = saltfile.readline()
 
-        elif not args.unsalted:
-            with open('/dev/tty', 'w') as ttyfile:
-                if not os.isatty(ttyfile.fileno()):
-                    die('Unable to find salt in key - {}'.format(args.name))
+    elif not args.unsalted and not args.revoke:
+        with open('/dev/tty', 'w') as ttyfile:
+            if not os.isatty(ttyfile.fileno()):
+                die('Unable to find salt in key - {}'.format(args.key))
 
-                args.name = (
-                    key
-                    + _SALT
-                    + ('{:02x}'*3).format(
-                        *struct.unpack('!' + 'B'*3, os.urandom(3))))
-                typeCommand(ttyfile, args)
+            args.key += _KEYSEP + str(os.getppid())
 
-                rc = 127
-        else:
-            salt = None
+            typeCommand(
+                ttyfile,
+                args,
+                ('{:02x}'*3).format(
+                    *struct.unpack('!' + 'B'*3, os.urandom(3))))
+
+            rc = 127
+    else:
+        salt = None
 
     if rc is None:
         rc = 1
@@ -472,7 +598,7 @@ def _main(argv):
 
         store = _store.Store(
             os.path.basename(os.path.dirname(__file__)),
-            key,
+            args.key,
             salt,
             keepalive = timeout)
 
@@ -487,7 +613,9 @@ def _main(argv):
             memento = None
             if args.command:
                 memento = store.recall()
-            if memento is None:
+            if memento is False:
+                die('Undecipherable key - {}'.format(key))
+            elif memento is None:
                 args.update = True
                 memento = readMemento()
                 store.memorise(memento)
