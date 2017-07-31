@@ -4,7 +4,6 @@ import os
 import os.path
 import stat
 import math
-import re
 import sys
 import getpass
 import termios
@@ -15,7 +14,6 @@ import time
 import pipes
 import fcntl
 import struct
-import threading
 import signal
 import select
 import contextlib
@@ -71,7 +69,7 @@ def createKeySuffix():
 def fdclose(fd):
     if fd is not None:
         os.close(fd)
-    return None
+    return False or None # Avoid spurious assignment-from-none
 
 
 def fdreadable(fd):
@@ -197,10 +195,34 @@ def spawnFob(rdfile, wrfile, args):
     if childpid:
         exitcode = waitProcess(childpid)
         if not exitcode:
-            cmd = [
-                '/dev/fd/{}'.format(rdfile.fileno()) if word is None else word
-                for word in args.command
-            ]
+            devfd = '/dev/fd/{}'.format(rdfile.fileno())
+            if not args.arg:
+                cmd = [
+                    devfd if word is None else word
+                    for word in args.command
+                ]
+            else:
+                lib = os.path.join(os.path.dirname(__file__), 'libkeyfob.so')
+
+                if ':' in lib or ' ' in lib:
+                    raise RuntimeError(lib)
+
+                os.environ['_KEYFOB_PRELOAD']  = lib
+                os.environ['_KEYFOB_ARGFILE']  = devfd
+                os.environ['_KEYFOB_ARGINDEX'] = str(args.command.index(None))
+
+                ldpreload = 'LD_PRELOAD'
+                os.environ[ldpreload] = (
+                    '{}:{}'.format(lib, os.environ[ldpreload])
+                    if ldpreload in os.environ else
+                    lib)
+
+                argword = _FILE if args.file is None else args.file
+
+                cmd = [
+                    argword if word is None else word
+                    for word in args.command
+                ]
 
             if args.pipe:
                 os.dup2(rdfile.fileno(), sys.stdin.fileno())
@@ -237,19 +259,19 @@ def readKey(filename):
         # key securely. With that in mind, search for the corresponding
         # file descriptor and close that too.
 
-        stat    = os.fstat(keyfile.fileno())
-        keystat = (stat.st_dev, stat.st_ino)
+        filestat = os.fstat(keyfile.fileno())
+        keystat  = (filestat.st_dev, filestat.st_ino)
 
         numfds, _ = resource.getrlimit(resource.RLIMIT_NOFILE)
         for fd in xrange(0, numfds):
             if fd != keyfile.fileno():
                 try:
-                    stat = os.fstat(fd)
+                    filestat = os.fstat(fd)
                 except OSError as exc:
                     if exc.errno != errno.EBADF:
                         raise
                 else:
-                    if (stat.st_dev, stat.st_ino) == keystat:
+                    if (filestat.st_dev, filestat.st_ino) == keystat:
                         fdclose(fd)
     return key
 
@@ -301,9 +323,10 @@ def createParser():
     ioGroup = modeGroup.add_mutually_exclusive_group()
     ioGroup.add_argument(
         '-f', '--file', action = 'store',
-        help = 'Use a file. The name of the file will be inserted'
-        ' in place of the argument matching the replacement text.'
-        ' The command will read the memento from the file.')
+        help = 'Use a file. Unless --arg is used, the name of the file'
+        ' will be inserted in place of the argument matching the replacement'
+        ' text, and the command will read the memento from the file. '
+        ' This is the default action.')
 
     ioGroup.add_argument(
         '-t', '--tty', action = 'store_true',
@@ -311,12 +334,19 @@ def createParser():
         ' the controlling terminal.')
 
     ioGroup.add_argument(
-        '-p', '--pipe', default = None, const = True, nargs = '?',
-        type = int, choices = [ 1 ],
-        help = 'Use a pipe. The command will read the memento from stdin.'
-        ' Normally the pipe will remain open to allow the command to'
-        ' read the remaining data on stdin. Specify an argument of 1'
-        ' to close stdin after sending the memento.')
+        '-p', '--pipe', action = 'store_true',
+        help = 'Use a pipe. The command will read the memento from stdin.')
+
+    argparser.add_argument(
+        '-1', '--oneline', action='store_true',
+        help = 'When using --pipe, close stdin after sending the memento'
+        ' rather than allowing the command to read more data.')
+
+    argparser.add_argument(
+        '-a', '--arg', action = 'store_true',
+        help = 'When using --file, the memento will be inserted'
+        ' in place of the argument matching the replacement text.'
+        ' The command will use the memento in the command line argument.')
 
     argparser.add_argument(
         '-s', '--salt',
@@ -354,18 +384,18 @@ def buildCommand(args, saltvar):
 
     argv = [_ARG0 if args.program is None else args.program]
     if args.file is not None:
-        argv.append('-f ' + pipes.quote(args.file))
+        argv.extend(['-f', pipes.quote(args.file)])
     if args.tty:
         argv.append('-t')
-    if args.pipe is not None:
-        argv.append('-p')
-        if args.pipe is not True:
-            argv.append(args.pipe)
+    if args.pipe:
+        argv.append('-p1' if args.oneline else '-p')
+    if args.arg:
+        argv.append('-a')
     if args.timeout is not None:
         argv.extend(['-T', args.timeout])
     argv.extend(['-s', '<(${})'.format(saltvar)])
-    argv.append('--')
     argv.append(pipes.quote(args.key))
+    argv.append('--')
 
     for cmd in args.command:
         if cmd is not None:
@@ -486,7 +516,7 @@ def sendMemento(rdfile, wrfile, args, memento):
 
         closeFds(keepfds)
 
-        if args.pipe:
+        if args.pipe and not args.oneline:
             pipeMemento(sys.stdin, sys.stdout, memento)
         else:
             if args.tty:
@@ -522,7 +552,10 @@ def run(memento, args):
     return 1 if exitcode is None else exitcode
 
 
-def main(argv=sys.argv):
+def main(argv=None):
+
+    if argv is None:
+        argv = sys.argv
 
     try:
         return _main(argv)
@@ -535,16 +568,17 @@ def _main(argv):
     args = createParser().parse_args(argv[1:])
 
     if args.revoke:
-        if any((args.command, args.tty, args.pipe)):
+        if any((args.command, args.tty, args.pipe, args.oneline)):
             die('Revocation conflicts with other options')
     else:
-        if args.tty:
+        if args.oneline and not args.pipe:
+            die('Irrelevant argument when pipe not in use')
+        elif args.arg and (args.tty or args.pipe):
+            die('Irrelvant argument when file not in use')
+        elif args.tty:
             if not os.isatty(sys.stdin.fileno()):
-                die('Typed input requires stding to be a tty')
-        elif args.pipe is not None:
-            if args.pipe is not True and args.pipe != 1:
-                die('Invalid pipe argument - {}'.format(args.pipe))
-        else:
+                die('Typed input requires stdin to be a tty')
+        elif not args.pipe:
             fileword = _FILE if args.file is None else args.file
             if not fileword:
                 die('File replacement text must not be empty')
@@ -614,7 +648,7 @@ def _main(argv):
             if args.command:
                 memento = store.recall()
             if memento is False:
-                die('Undecipherable key - {}'.format(key))
+                die('Undecipherable key - {}'.format(args.key))
             elif memento is None:
                 args.update = True
                 memento = readMemento()
