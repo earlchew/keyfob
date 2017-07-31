@@ -9,6 +9,14 @@ set -ex
 
 [ $# -eq 0 ] || {
     cd "${0%/*}"
+    python setup.py build_ext
+    (
+        for lib in build/lib.*/keyfob/libkeyfob.so ; do
+            ln -s ../../"$lib" lib/keyfob/
+            exit 0
+        done
+        exit 1
+    }
     exec pip install -r requirements.txt "$@"
     exit 1
 }

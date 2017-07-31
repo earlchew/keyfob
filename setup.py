@@ -1,4 +1,4 @@
-from setuptools import setup
+from setuptools import setup, Extension
 
 setup(name='keyfob',
       version='1.0',
@@ -13,4 +13,10 @@ setup(name='keyfob',
               'keyfob = keyfob.__main__:main',
           ]},
       package_dir={'' : 'lib'},
-      install_requires=['keyutils', 'cryptography'])
+      install_requires=['keyutils', 'cryptography'],
+      ext_package='keyfob',
+      ext_modules=[Extension(
+          'libkeyfob',
+          ['libkeyfob.c'],
+          define_macros=[('_GNU_SOURCE', None)],
+          extra_compile_args=['-std=c99'])])
