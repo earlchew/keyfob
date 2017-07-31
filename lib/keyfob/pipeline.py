@@ -48,8 +48,8 @@ def _splice(infd, inoff, outfd, outoff, size, flags):
     return rc
 
 
-def _ioerror(errno):
-    return IOError(errno, os.strerror(errno))
+def _ioerror(err):
+    return IOError(err, os.strerror(err))
 
 
 class Pipeline(object):
@@ -90,7 +90,7 @@ class Pipeline(object):
             # there is no input to read, and the output is closed. To
             # take care of this, use poll(2) to block, and splice(2) to copy.
 
-            for fd, mask in self.__poll.poll():
+            for fd, _ in self.__poll.poll():
                 if self.__outfile.fileno() == fd:
                     raise _ioerror(errno.EPIPE)
                 if self.__inpfile.fileno() == fd:
