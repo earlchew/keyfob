@@ -195,10 +195,10 @@ def spawnFob(rdfile, wrfile, args):
     if childpid:
         exitcode = waitProcess(childpid)
         if not exitcode:
-            devfd = '/dev/fd/{}'.format(rdfile.fileno())
+            devrdfd = '/dev/fd/{}'.format(rdfile.fileno())
             if not args.arg:
                 cmd = [
-                    devfd if word is None else word
+                    devrdfd if word is None else word
                     for word in args.command
                 ]
             else:
@@ -208,7 +208,7 @@ def spawnFob(rdfile, wrfile, args):
                     raise RuntimeError(lib)
 
                 os.environ['_KEYFOB_PRELOAD']  = lib
-                os.environ['_KEYFOB_ARGFILE']  = devfd
+                os.environ['_KEYFOB_ARGFILE']  = devrdfd
                 os.environ['_KEYFOB_ARGINDEX'] = str(args.command.index(None))
 
                 ldpreload = 'LD_PRELOAD'
