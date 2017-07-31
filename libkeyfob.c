@@ -6,6 +6,8 @@
 #include <limits.h>
 #include <errno.h>
 #include <stdarg.h>
+#include <sys/resource.h>
+#include <sys/stat.h>
 
 static const char argIndex_[]   = "_KEYFOB_ARGINDEX";
 static const char argFile_[]    = "_KEYFOB_ARGFILE";
@@ -55,6 +57,35 @@ readLine_(const char *aArgFile)
         {
             *cp = 0;
             break;
+        }
+    }
+
+    /* Purge the shared file descriptor if it can be found. This will
+     * help leave the process clean of artifacts. */
+
+    struct rlimit rlim;
+    struct stat fpstat;
+    if ( ! getrlimit(RLIMIT_NOFILE, &rlim)
+         && ! fstat(fileno(fp), &fpstat))
+    {
+        for (int fd = 0; fd < rlim.rlim_cur; ++fd)
+        {
+            struct stat fdstat;
+
+            if ( ! fstat(fd, &fdstat)
+                 && fpstat.st_dev == fdstat.st_dev
+                 && fpstat.st_ino == fdstat.st_ino)
+            {
+                /* There should only be one occurrence so terminate when
+                 * found. This also helps reduce the amount of output
+                 * when running under strace(1), etc. */
+
+                if (fd != fileno(fp))
+                {
+                    close(fd);
+                    break;
+                }
+            }
         }
     }
 
