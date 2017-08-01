@@ -24,11 +24,18 @@ discarded, reuse requires the user to re-enter the secret.
 
 ### Installing
 
-To install the program:
+The Keysafe application can be run directly from the cloned git repository. To install the application in this way:
 
-* git clone https://github.com/earlchew/keysafe.git
-* keysafe/install.sh
-* `ln -s keysafe/keysafe /usr/local/bin/`
+* `git clone https://github.com/earlchew/keysafe.git`
+* `cd keysafe && ./install.sh`
+* Optionally: `cd keysafe && ln -s ./keysafe /usr/local/bin/`
+
+Alternatively the application can be installed in a target directory using the package manager:
+
+* `git clone https://github.com/earlchew/keysafe.git`
+* `cd keysafe && pip install -r requirements.txt .`
+
+## Usage
 
 ### Concepts
 
