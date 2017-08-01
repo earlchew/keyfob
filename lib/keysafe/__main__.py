@@ -21,9 +21,10 @@ import contextlib
 from . import store as _store
 from . import pipeline as _pipeline
 
+_NAME    = os.path.basename(os.path.dirname(__file__)).upper()
 _KEYSEP  = '-'
 _KEYSALT = '.'
-_KEYPFX  = '_KEYFOB_'
+_KEYPFX  = '_{}_'.format(_NAME)
 
 _FILE    = '@@'
 _TIMEOUT = 60
@@ -202,20 +203,23 @@ def spawnFob(rdfile, wrfile, args):
                     for word in args.command
                 ]
             else:
-                lib = os.path.join(os.path.dirname(__file__), 'libkeyfob.so')
+                libdir  = os.path.join(os.path.dirname(__file__))
+                libname = 'lib{}.so'.format(os.path.basename(libdir))
+                libpath = os.path.join(libdir, libname)
 
-                if ':' in lib or ' ' in lib:
-                    raise RuntimeError(lib)
+                if ':' in libpath or ' ' in libpath:
+                    raise RuntimeError(libpath)
 
-                os.environ['_KEYFOB_PRELOAD']  = lib
-                os.environ['_KEYFOB_ARGFILE']  = devrdfd
-                os.environ['_KEYFOB_ARGINDEX'] = str(args.command.index(None))
+                os.environ['_{}_PRELOAD'.format(_NAME)]  = libpath
+                os.environ['_{}_ARGFILE'.format(_NAME)]  = devrdfd
+                os.environ['_{}_ARGINDEX'.format(_NAME)] = (
+                        str(args.command.index(None)))
 
                 ldpreload = 'LD_PRELOAD'
                 os.environ[ldpreload] = (
-                    '{}:{}'.format(lib, os.environ[ldpreload])
+                    '{}:{}'.format(libpath, os.environ[ldpreload])
                     if ldpreload in os.environ else
-                    lib)
+                    libpath)
 
                 argword = _FILE if args.file is None else args.file
 

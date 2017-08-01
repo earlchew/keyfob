@@ -1,6 +1,6 @@
-# Keyfob
+## Introduction
 
-Keyfob is a command line application that is used to remember passwords, or any other kind of secret, for a login session.
+Keysafe is a command line application that is used to remember passwords, or any other kind of secret, for a login session.
 Once remembered, the password can be recalled for reuse during the session. The password is stored in memory, and does
 not persist beyond the login session.
 
@@ -8,7 +8,7 @@ Typically secrets such as passwords are required during a login session to acces
 this requires the user to provide the password each time the service is accessed. Doing so repeatedly can be
 tiresome and errorprone.
 
-The Keyfob application can be used to remember the secret in a secure way, and to provide that secret each time
+The Keysafe application can be used to remember the secret in a secure way, and to provide that secret each time
 the secured service is accessed for the duration of the loging session.
 
 The remembered secret is discarded once the login session terminates, or when the secret expires. Once the secret is
@@ -26,13 +26,13 @@ discarded, reuse requires the user to re-enter the secret.
 
 To install the program:
 
-* git clone https://github.com/earlchew/keyfob.git
-* keyfob/install.sh
-* `ln -s keyfob/keyfob /usr/local/bin/`
+* git clone https://github.com/earlchew/keysafe.git
+* keysafe/install.sh
+* `ln -s keysafe/keysafe /usr/local/bin/`
 
 ### Concepts
 
-The following three concepts are required to understand and use Keyfob:
+The following three concepts are required to understand and use Keysafe:
 
 1. The application that requires the password
 1. The key used to identify the application
@@ -46,7 +46,7 @@ Password:
 xxU4b0XBMjadY
 ```
 
-To keep secrets as secure possible, the Keyfob application uses the following techniques:
+To keep secrets as secure possible, the Keysafe application uses the following techniques:
 
 * Avoid writing secrets to files, and reading secrets from files
 * Avoid writing secrets as command line arguments
@@ -65,29 +65,29 @@ For illustration, the name _EXAMPLE_ will be used to identify this application, 
 [`sslpasswd(1)`](https://linux.die.net/man/1/sslpasswd) the password can be supplied from a file, from stdin,
 or from the terminal.
 
-In these examples, the Keyfob application will be invoked three times:
+In these examples, the Keysafe application will be invoked three times:
 1. Revoking the password from the previous example, if any
 1. Remember the new password on th initial invocation of the openssl instance
 1. Recall the password when invoking a new openssl instance
 
 #### Using a File to Send Secrets
 
-`$ keyfob --revoke EXAMPLE-$$`  
-`$ keyfob EXAMPLE -- openssl passwd -noverify -salt xx -in @@`  
-**`[1]+  Stopped                 keyfob EXAMPLE -- openssl passwd -noverify -salt xx -in @@`**  
-**` unset _KEYFOB_hCYju ; read -r _KEYFOB_hCYju </proc/32143/fd/5 ; fg`**  
+`$ keysafe --revoke EXAMPLE-$$`  
+`$ keysafe EXAMPLE -- openssl passwd -noverify -salt xx -in @@`  
+**`[1]+  Stopped                 keysafe EXAMPLE -- openssl passwd -noverify -salt xx -in @@`**  
+**` unset _KEYSAFE_hCYju ; read -r _KEYSAFE_hCYju </proc/32143/fd/5 ; fg`**  
 `$`  
-`$ `**`keyfob -s <($_KEYFOB_hCYju) EXAMPLE-2804 -- openssl passwd -noverify -salt xx -in @@`**  
+`$ `**`keysafe -s <($_KEYSAFE_hCYju) EXAMPLE-2804 -- openssl passwd -noverify -salt xx -in @@`**  
 **`Memento: ********`**  
 `xxU4b0XBMjadY`  
-`$ keyfob -s <($_KEYFOB_hCYju) EXAMPLE-2804 -- openssl passwd -noverify -salt xx -in @@`  
+`$ keysafe -s <($_KEYSAFE_hCYju) EXAMPLE-2804 -- openssl passwd -noverify -salt xx -in @@`  
 `xxU4b0XBMjadY`  
 
 This first example illustrates a couple of main points:
-* The use of an unexported intermediate shell variable `$_KEYFOB_hCYju` to prevents the key salt being recorded
+* The use of an unexported intermediate shell variable `$_KEYSAFE_hCYju` to prevents the key salt being recorded
 in shell history. Inspection of shell history will only show the use of the shell variable, but will not
 show the actual value being used.
-* The use of process substitution at the shell `<($_KEYFOB_hCYju)` prevents the key salt being
+* The use of process substitution at the shell `<($_KEYSAFE_hCYju)` prevents the key salt being
 recorded as part of the title of the process. Inspection of the process using `ps(1)` will only show that the
 salt is being read from `/dev/fd/N` or similar.
 * The key name is augmented with a suffix to disambiguate it from instances used in other shell instances
@@ -96,7 +96,7 @@ in the same login session.
 of salt allows secrets to be stored securely. The revised command available at the command line (shown in **bold**
 in the example). If the revised command is acceptable, the user press `<RETURN>` and proceed, otherwise the
 command line is available for further editing.
-* If no value was previously recorded for the key, the Keyfob application prompts the user with the word
+* If no value was previously recorded for the key, the Keysafe application prompts the user with the word
 **`Memento:`** to type the initial value.
 * The command line argument `@@` is replaced by the name of the pipe over which the application can read
 the secret.
@@ -106,10 +106,10 @@ The password itself is stored in a session keyring as described in [keyrings(7)]
 `$ keyctl show @s`  
 `Keyring`  
 `1069142298 --alswrv   1021  1021  keyring: _ses`  
-`1030239571 --alswrv   1021  1021   \_ user: keyfob:EXAMPLE-2804`  
+`1030239571 --alswrv   1021  1021   \_ user: keysafe:EXAMPLE-2804`  
 `$ cat /proc/keys`  
 `...`  
-`d683553 I--Q---     1  59m 3f230000  1021  1021 user      keyfob:EXAMPLE-2804: 100`  
+`d683553 I--Q---     1  59m 3f230000  1021  1021 user      keysafe:EXAMPLE-2804: 100`  
 `$ keyctl print $((0x3d683553))`  
 `gAAAAABZfNOm5ymrvBaxRwdHPICfJ7XDXcf95-UwYUhCIhekhR7RPoCZjc5hmKSWS1pekSGtMVY8ePH6_OT_bl4dB4ZtBpeHzA==`  
 
@@ -121,9 +121,9 @@ this example) to decrypt.
 
 If the wrong value was stored, the keyring can be updated with the correct value:
 
-`$ keyfob -s <($_KEYFOB_hCYju) -- EXAMPLE-2804`  
+`$ keysafe -s <($_KEYSAFE_hCYju) -- EXAMPLE-2804`  
 **`Memento: ********`**  
-`$ keyfob -s <($_KEYFOB_hCYju) -- EXAMPLE-2804 openssl passwd -noverify -salt xx -in @@`  
+`$ keysafe -s <($_KEYSAFE_hCYju) -- EXAMPLE-2804 openssl passwd -noverify -salt xx -in @@`  
 `xxIrpmD5YjTxs`  
 
 #### Using Command Arguments to Send Secrets
@@ -131,15 +131,15 @@ If the wrong value was stored, the keyring can be updated with the correct value
 The above examples show `sslpasswd(1)` reading a password from a file. This next example shows `sslpasswd(1)`
 obtaining the password directly from the command argument:
 
-`$ keyfob --revoke EXAMPLE-$$`  
-`$ keyfob -a EXAMPLE -- openssl passwd -noverify -salt xx @@`  
-**`[1]+  Stopped                 keyfob -a EXAMPLE -- openssl passwd -noverify -salt xx @@`**  
-**` unset _KEYFOB_hn3nf ; read -r _KEYFOB_hn3nf </proc/14017/fd/5 ; fg`**  
+`$ keysafe --revoke EXAMPLE-$$`  
+`$ keysafe -a EXAMPLE -- openssl passwd -noverify -salt xx @@`  
+**`[1]+  Stopped                 keysafe -a EXAMPLE -- openssl passwd -noverify -salt xx @@`**  
+**` unset _KEYSAFE_hn3nf ; read -r _KEYSAFE_hn3nf </proc/14017/fd/5 ; fg`**  
 `$`  
-`$ `**`keyfob -a -s <($_KEYFOB_hn3nf) EXAMPLE-2804 -- openssl passwd -noverify -salt xx @@`**  
+`$ `**`keysafe -a -s <($_KEYSAFE_hn3nf) EXAMPLE-2804 -- openssl passwd -noverify -salt xx @@`**  
 **`Memento: ********`**  
 `xxU4b0XBMjadY`  
-`$ keyfob -a -s <($_KEYFOB_hn3nf) EXAMPLE-2804 -- openssl passwd -noverify -salt xx @@`  
+`$ keysafe -a -s <($_KEYSAFE_hn3nf) EXAMPLE-2804 -- openssl passwd -noverify -salt xx @@`  
 `xxU4b0XBMjadY`  
 
 Under normal circumstances this is the worst of all ways to provide a password to a program:
@@ -148,14 +148,14 @@ Under normal circumstances this is the worst of all ways to provide a password t
 * The password is visible process listings (eg `ps(1)`, `/proc/pid/cmdline`, etc)
 * The password is visible in shell histories
 
-Use of Keyfob mitigates these risks because the secret is tunnelled to the application program. The secret
+Use of Keysafe mitigates these risks because the secret is tunnelled to the application program. The secret
 is available to the process via its in-process command line (ie `(argc, argv)`), but the secret
 is not visible on the terminal, in processing listings, nor present in shell histories.
 
 The following demonstrates that while the program can read the password directly from its command
 line argument, casual inspection by an external observer does not reveal the password:
 
-`$ keyfob -a -s <($_KEYFOB_hn3nf) EXAMPLE-2804 -- sh -c 'echo args: "$@" ; echo cmdline: ; tr "\0" "\n" < /proc/$$/cmdline' 0 1 @@ 2`  
+`$ keysafe -a -s <($_KEYSAFE_hn3nf) EXAMPLE-2804 -- sh -c 'echo args: "$@" ; echo cmdline: ; tr "\0" "\n" < /proc/$$/cmdline' 0 1 @@ 2`  
 `args: 1 Pa55w0rd 2`  
 `cmdline:`  
 `sh`  
@@ -170,28 +170,28 @@ line argument, casual inspection by an external observer does not reveal the pas
 
 This next example shows `sslpasswd(1)` reading the password from stdin:
 
-`$ keyfob --revoke EXAMPLE-$$`  
-`$ keyfob --pipe EXAMPLE -- openssl passwd -noverify -salt xx -stdin </dev/null`  
-**`[1]+  Stopped                 keyfob --pipe EXAMPLE -- openssl passwd -noverify -salt xx -stdin < /dev/null`**  
-**` unset _KEYFOB_hDL38 ; read -r _KEYFOB_hDL38 </proc/455/fd/5 ; fg`**  
+`$ keysafe --revoke EXAMPLE-$$`  
+`$ keysafe --pipe EXAMPLE -- openssl passwd -noverify -salt xx -stdin </dev/null`  
+**`[1]+  Stopped                 keysafe --pipe EXAMPLE -- openssl passwd -noverify -salt xx -stdin < /dev/null`**  
+**` unset _KEYSAFE_hDL38 ; read -r _KEYSAFE_hDL38 </proc/455/fd/5 ; fg`**  
 `$`  
-`$ `**`keyfob -p -s <($_KEYFOB_hDL38) EXAMPLE-2804 -- openssl passwd -noverify -salt xx -stdin </dev/null`**  
+`$ `**`keysafe -p -s <($_KEYSAFE_hDL38) EXAMPLE-2804 -- openssl passwd -noverify -salt xx -stdin </dev/null`**  
 **`Memento: ********`**  
 `xxU4b0XBMjadY`  
-`$ keyfob -p -s <($_KEYFOB_hDL38) EXAMPLE-2804 -- openssl passwd -noverify -salt xx -stdin </dev/null`  
+`$ keysafe -p -s <($_KEYSAFE_hDL38) EXAMPLE-2804 -- openssl passwd -noverify -salt xx -stdin </dev/null`  
 `xxU4b0XBMjadY` 
 
 #### Typing Secrets
 
 The final example shows `sslpasswd(1)` reading the password from the controlling terminal:
 
-`$ keyfob --revoke EXAMPLE-$$`  
-`$ keyfob --tty EXAMPLE -- openssl passwd -noverify -salt xx`  
-**`[1]+  Stopped                 keyfob --tty EXAMPLE -- openssl passwd -noverify -salt xx`**  
-**` unset _KEYFOB_hDS23 ; read -r _KEYFOB_hDS23 </proc/566/fd/5 ; fg`**  
+`$ keysafe --revoke EXAMPLE-$$`  
+`$ keysafe --tty EXAMPLE -- openssl passwd -noverify -salt xx`  
+**`[1]+  Stopped                 keysafe --tty EXAMPLE -- openssl passwd -noverify -salt xx`**  
+**` unset _KEYSAFE_hDS23 ; read -r _KEYSAFE_hDS23 </proc/566/fd/5 ; fg`**  
 `$`  
-`$ `**`keyfob -t -s <($_KEYFOB_hDS23) EXAMPLE-2804 -- openssl passwd -noverify -salt xx`**  
+`$ `**`keysafe -t -s <($_KEYSAFE_hDS23) EXAMPLE-2804 -- openssl passwd -noverify -salt xx`**  
 **`Memento: ********`**  
 `xxU4b0XBMjadY`  
-`$ keyfob -t -s <($_KEYFOB_hDS23) EXAMPLE-2804 -- openssl passwd -noverify -salt xx`  
+`$ keysafe -t -s <($_KEYSAFE_hDS23) EXAMPLE-2804 -- openssl passwd -noverify -salt xx`  
 `xxU4b0XBMjadY` 

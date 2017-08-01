@@ -6,20 +6,33 @@ set -ex
 
 # If command line options are provided, install using those options
 # directly, otherwise install in-situ.
+#
+# When installing into a target directory, remember to also install
+# the executables. For example:
+#
+#    install.sh
+#        --target=/usr/local/pkg/keysafe
+#        --install-option="--install-scripts=/usr/local/pkg/keysafe/bin"
+
+cd "${0%/*}"
 
 [ $# -eq 0 ] || {
-    cd "${0%/*}"
-    python setup.py build_ext
-    (
-        for lib in build/lib.*/keyfob/libkeyfob.so ; do
-            ln -s ../../"$lib" lib/keyfob/
-            exit 0
-        done
-        exit 1
-    }
     exec pip install -r requirements.txt "$@"
     exit 1
 }
+
+# Place a symlink in the source directory that points to the built
+# shared library. This will allow the package to be run in-situ.
+
+python setup.py build_ext
+(
+    for lib in build/lib.*/"${PWD##*/}"/*.so ; do
+        [ -r lib/"${PWD##*/}/${lib##*/}" ] ||
+            ln -sf ../../"$lib" lib/"${PWD##*/}"/
+        exit 0
+    done
+    exit 1
+)
 
 # Obtain the current commit of the install script, and check if it was the one
 # used to perform the last install, if any.
@@ -35,9 +48,9 @@ VERSION="$(readlink "${0%/*}/pkg/VERSION")" || VERSION=
 # To prepare for the installation, clear out the target directories so that the
 # installation can proceed cleanly.
 
-rm -rf "${0%/*}/pkg"
+rm -rf pkg
 
-( cd "${0%/*}" && pip install --target pkg -r requirements.txt )
+pip install --target pkg -r requirements.txt
 
 # Once the installation completes, stamp the directory atomically so that the
 # next run can determine that the installer completed successfully.

@@ -1,2 +1,2 @@
-git+https://github.com/earlchew/python-keyutils@keyfob#egg=keyutils
+git+https://github.com/earlchew/python-keyutils@keysafe#egg=keyutils
 cryptography==1.7.2

@@ -9,9 +9,15 @@
 #include <sys/resource.h>
 #include <sys/stat.h>
 
-static const char argIndex_[]   = "_KEYFOB_ARGINDEX";
-static const char argFile_[]    = "_KEYFOB_ARGFILE";
-static const char argPreload_[] = "_KEYFOB_PRELOAD";
+#define STRINGIFY(_NAME)  STRINGIFY_(_NAME)
+#define STRINGIFY_(_NAME) #_NAME
+
+#define MODULE_NAME_ STRINGIFY(MODULE_NAME)
+#define MODULE_name_ STRINGIFY(MODULE_name)
+
+static const char argIndex_[]   = "_" MODULE_NAME_ "_ARGINDEX";
+static const char argFile_[]    = "_" MODULE_NAME_ "_ARGFILE";
+static const char argPreload_[] = "_" MODULE_NAME_ "_PRELOAD";
 
 static void
 die(const char *aFmt, ...)
@@ -23,7 +29,7 @@ die(const char *aFmt, ...)
     va_list argp;
 
     va_start(argp, aFmt);
-    fprintf(stderr, "keyfob: ");
+    fprintf(stderr, MODULE_name_ ": ");
     vfprintf(stderr, aFmt, argp);
     fputc('\n', stderr);
     va_end(argp);
@@ -225,9 +231,9 @@ main_(int argc, char **argv, char **env)
     char *argfile    = 0;
     char *argpreload = 0;
 
-    /* Find the parameters that match the data provided by the keyfob
-     * application. These will be used to find the secret, and also
-     * find which argument should be replaced. */
+    /* Find the parameters that match the data provided by the application.
+     * These will be used to find the secret, and also find which argument
+     * should be replaced. */
 
     for (char **envp = env; *envp; ++envp)
     {
