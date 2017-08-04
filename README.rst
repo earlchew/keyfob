@@ -14,7 +14,7 @@ repeatedly can be tiresome and errorprone.
 
 The Keysafe application can be used to remember the secret in a secure
 way, and to provide that secret each time the secured service is
-accessed for the duration of the loging session.
+accessed for the duration of the login session.
 
 The remembered secret is discarded once the login session terminates, or
 when the secret expires. Once the secret is discarded, reuse requires
