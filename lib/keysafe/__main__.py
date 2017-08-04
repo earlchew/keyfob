@@ -610,6 +610,9 @@ def _main(argv):
             salt = saltfile.readline()
 
     elif not args.unsalted and not args.revoke:
+        if not args.command:
+            die('No command provided')
+
         with open('/dev/tty', 'w') as ttyfile:
             if not os.isatty(ttyfile.fileno()):
                 die('Unable to find salt in key - {}'.format(args.key))
