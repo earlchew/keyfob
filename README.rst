@@ -103,9 +103,7 @@ Using a File to Send Secrets
 
 | ``$ keysafe --revoke EXAMPLE-$$``
 | ``$ keysafe EXAMPLE -- openssl passwd -noverify -salt xx -in @@``
-| **[1]+  Stopped                 keysafe EXAMPLE -- openssl passwd -noverify -salt xx -in @@**
-| **\ unset _KEYSAFE_hCYju ; read -r _KEYSAFE_hCYju </proc/32143/fd/5 ; fg**
-| ``$``
+| ``$``\ **. /proc/18220/fd/4**
 | ``$``\ **keysafe -s <($_KEYSAFE_hCYju) EXAMPLE-2804 -- openssl passwd -noverify -salt xx -in @@**
 | **Memento: \*\*\*\*\*\*\*\***
 | ``xxU4b0XBMjadY``
@@ -171,9 +169,7 @@ from the command argument:
 
 | ``$ keysafe --revoke EXAMPLE-$$``
 | ``$ keysafe -a EXAMPLE -- openssl passwd -noverify -salt xx @@``
-| **[1]+  Stopped                 keysafe -a EXAMPLE -- openssl passwd -noverify -salt xx @@**
-| **\ unset _KEYSAFE_hn3nf ; read -r _KEYSAFE_hn3nf </proc/14017/fd/5 ; fg**
-| ``$``
+| ``$``\ **. /proc/7817/fd/4**
 | ``$``\ **keysafe -a -s <($_KEYSAFE_hn3nf) EXAMPLE-2804 -- openssl passwd -noverify -salt xx @@**
 | **Memento: \*\*\*\*\*\*\*\***
 | ``xxU4b0XBMjadY``
@@ -216,9 +212,7 @@ This next example shows sslpasswd_ reading the password from stdin:
 
 | ``$ keysafe --revoke EXAMPLE-$$``
 | ``$ keysafe --pipe EXAMPLE -- openssl passwd -noverify -salt xx -stdin </dev/null``
-| **[1]+  Stopped                 keysafe --pipe EXAMPLE -- openssl passwd -noverify -salt xx -stdin < /dev/null**
-| **\ unset _KEYSAFE_hDL38 ; read -r _KEYSAFE_hDL38 </proc/455/fd/5 ; fg**
-| ``$``
+| ``$``\ **. /proc/81923/fd/4**
 | ``$``\ **keysafe -p -s <($_KEYSAFE_hDL38) EXAMPLE-2804 -- openssl passwd -noverify -salt xx -stdin </dev/null**
 | **Memento: \*\*\*\*\*\*\*\***
 | ``xxU4b0XBMjadY``
@@ -233,9 +227,7 @@ The final example shows sslpasswd_ reading the password from the controlling ter
 
 | ``$ keysafe --revoke EXAMPLE-$$``
 | ``$ keysafe --tty EXAMPLE -- openssl passwd -noverify -salt xx``
-| **[1]+  Stopped                 keysafe --tty EXAMPLE -- openssl passwd -noverify -salt xx**
-| **\ unset _KEYSAFE_hDS23 ; read -r _KEYSAFE_hDS23 </proc/566/fd/5 ; fg**
-| ``$``
+| ``$``\ **. /proc/651/fd/4**
 | ``$``\ **keysafe -t -s <($_KEYSAFE_hDS23) EXAMPLE-2804 -- openssl passwd -noverify -salt xx**
 | **Memento: \*\*\*\*\*\*\*\***
 | ``xxU4b0XBMjadY``
