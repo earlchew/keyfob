@@ -14,7 +14,6 @@ import time
 import pipes
 import fcntl
 import struct
-import signal
 import select
 import contextlib
 
@@ -39,6 +38,14 @@ def die(msg):
 def uptime():
     with open('/proc/uptime', 'r') as uptimefile:
         return uptimefile.readline().split(None, 1)[0]
+
+
+def backoff(limit, initial=0.1):
+    delay = initial
+    while True:
+        yield delay
+        time.sleep(delay)
+        delay = min(delay * 2, limit)
 
 
 def createKeySuffix():
@@ -71,16 +78,6 @@ def fdclose(fd):
     if fd is not None:
         os.close(fd)
     return False or None # Avoid spurious assignment-from-none
-
-
-def fdreadable(fd):
-    if not select.select([fd], [], [], 0)[0]:
-        readable = False
-    else:
-        buf = struct.pack("i", 0)
-        fcntl.ioctl(fd, termios.FIONREAD, buf)
-        readable = struct.unpack("i", buf)[0]
-    return readable
 
 
 def writeMemento(outfile, memento):
@@ -150,12 +147,8 @@ def ttyEchoEnabled(ttyfile):
 
 def typeMemento(inpfile, memento):
     for ch in memento + '\n':
-        delay = 0.1
-        while True:
-            if ttyEchoEnabled(inpfile):
-                time.sleep(delay)
-                delay = min(delay * 2, 2) # Exponential backoff
-            else:
+        for _ in backoff(2):
+            if not ttyEchoEnabled(inpfile):
                 fcntl.ioctl(inpfile.fileno(), termios.TIOCSTI, ch)
                 break
 
@@ -460,10 +453,26 @@ def typeCommand(ttyfile, args, salt):
     try:
         childpid = os.fork()
         if not childpid:
-            rdfd = fdclose(rdfd)
+            rdfdstop, wrfdstop = os.pipe()
+
             with os.fdopen(wrfd, 'w') as wrfile:
                 wrfd = None
-                wrfile.write('echo {}\n'.format(salt))
+                wrfile.write(
+                    'unset {saltvar}\n'
+                    '{saltvar}="echo \'{salt}\'"\n'
+                    'echo -n . > /proc/{pid}/fd/{fd}\n'.format(
+                        saltvar=saltvar,
+                        salt=salt,
+                        pid=os.getpid(),
+                        fd=wrfdstop))
+
+            # Leave rdfd open so that the shell can read the script
+            # fragment. The script fragment will write to wrfdstop
+            # to indicate that initialisation is complete.
+
+            if not select.select([rdfdstop], [], [], 600):
+                die('Key unread')
+
             os._exit(0)
 
         wrfd = fdclose(wrfd)
@@ -476,20 +485,14 @@ def typeCommand(ttyfile, args, salt):
         # leaked should these commands appear in the command history.
 
         cmd = (
-            ' unset {saltvar}'
-            ' ; read -r {saltvar} </proc/{pid}/fd/{fd}'
-            ' ; fg\n\n'.format(
-                saltvar=saltvar, pid=os.getpid(), fd=rdfd)
+            ' . /proc/{pid}/fd/{fd}\n'.format(
+                pid=childpid, fd=rdfd)
             + ' '.join((str(arg) for arg in argv)))
 
         with ttyEcho(ttyfile, False), ttySuspendInput(ttyfile):
             termios.tcflush(ttyfile.fileno(), termios.TCIFLUSH)
             for ch in cmd:
                 fcntl.ioctl(ttyfile.fileno(), termios.TIOCSTI, ch)
-
-        os.kill(os.getpid(), signal.SIGSTOP)
-        if fdreadable(rdfd) != 0:
-            die('Key unread')
 
     finally:
         rdfd = fdclose(rdfd)
@@ -607,7 +610,10 @@ def _main(argv):
             die('Salt provided for unsalted key')
 
         with open(args.salt, 'r') as saltfile:
-            salt = saltfile.readline()
+            salt = saltfile.readline().rstrip()
+
+        if not salt:
+            die('Key provided with empty salt')
 
     elif not args.unsalted and not args.revoke:
         if not args.command:
