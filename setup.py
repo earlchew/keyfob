@@ -1,21 +1,77 @@
+import os
+import re
 import os.path
+import errno
+import subprocess
 
 from setuptools import setup, Extension
-
-PKGNAME = 'keysafe'.lower()
-
 
 def readme():
     with open('README.rst', 'r') as readmefile:
         return readmefile.read()
 
 
+def gitversion():
+    with open(os.devnull, 'r') as devnull:
+        version = next(iter(subprocess.check_output(
+            ['git', 'tag', '-l', '--points-at', 'HEAD'],
+            stdin=devnull).split('\n', 1)), '').strip()
+
+        if version:
+            match = re.search(r'\d+\.\d+(\.\d+(\.\d+)?)?', version)
+            version = match.group(0) if match else None
+
+        if not version:
+            version = subprocess.check_output(
+                ['git', 'rev-parse', 'HEAD'], stdin=devnull).strip()[0:7]
+
+    return version
+
+
+def version(filename):
+
+    try:
+        os.stat('.git')
+    except OSError as exc:
+        if exc.errno != errno.ENOENT:
+            raise
+        label = None
+    else:
+        label = gitversion()
+
+    while True:
+        try:
+            versionfile = open(filename, 'r')
+        except IOError as exc:
+            if label is None or exc.errno != errno.ENOENT:
+                raise
+        else:
+            with versionfile:
+                versionlabel = versionfile.readline().rstrip()
+                if label is None or label == versionlabel:
+                    label = versionlabel
+                    break
+
+        assert label
+        with open(filename, 'w') as versionfile:
+            versionfile.write('{}\n'.format(label))
+        break
+
+    return label
+
+
+PKGNAME    = 'keysafe'.lower()
+PKGVERSION = version('VERSION.txt')
+PKGGITREPO = 'https://github.com/earlchew/{}'.format(PKGNAME)
+
+
 setup(
     name=PKGNAME,
-    version='1.0',
+    version=PKGVERSION,
     description='Remember secrets for the duration of a login session',
     long_description=readme(),
-    url='https://github.com/earlchew/keysafe',
+    url=PKGGITREPO,
+    download_url='{}/archive/v{}.tar.gz'.format(PKGGITREPO, PKGVERSION),
     author='Earl Chew',
     author_email='earl_chew@yahoo.com',
     license='BSD-2-Clause',
@@ -36,6 +92,7 @@ setup(
         ]},
     package_dir={'' : 'lib'},
     install_requires=['keyutils', 'cryptography'],
+    include_package_data=True,
     ext_package=PKGNAME,
     ext_modules=[Extension(
         'lib{}'.format(PKGNAME),
